@@ -1,0 +1,131 @@
+"""ReceptorBind environment: identify which molecule does NOT bind a given receptor."""
+
+import json
+from pathlib import Path
+from typing import List
+
+from pydantic import BaseModel, Field
+from rdkit import Chem
+import os
+
+from openreward.environments import (
+    Environment,
+    JSONObject,
+    Split,
+    TextBlock,
+    ToolOutput,
+    tool,
+)
+
+if os.path.exists("/orwd_data"):
+    ENV_PATH = Path("/orwd_data")
+else:
+    ENV_PATH = Path(__file__).parent
+
+
+class ReceptorBindTaskSpec(BaseModel):
+    task_id: str
+    split: str
+    receptor_name: str
+    receptor_gene: str
+    target_class: str
+    mode: str
+    options: list[str]
+    question: str
+
+
+class AnswerInput(BaseModel):
+    answer: str = Field(
+        description="The SMILES string of the molecule that is NOT a binder for the given receptor and mode."
+    )
+
+
+def load_all_tasks() -> dict[str, list[dict]]:
+    """Load tasks from JSON files at module import time."""
+    data_dir = ENV_PATH / "data"
+    all_tasks = {}
+    for split in ["train", "test"]:
+        json_file = data_dir / f"{split}.json"
+        if json_file.exists():
+            with open(json_file, "r", encoding="utf-8") as f:
+                all_tasks[split] = json.load(f)
+    return all_tasks
+
+
+ALL_TASKS = load_all_tasks()
+ANSWERS = {
+    task["task_id"]: task["answer_smiles"]
+    for split_tasks in ALL_TASKS.values()
+    for task in split_tasks
+}
+
+
+class ReceptorBind(Environment):
+    def __init__(self, task_spec: JSONObject, secrets: dict[str, str] = {}) -> None:
+        super().__init__(task_spec)
+        self.validated = ReceptorBindTaskSpec.model_validate(task_spec)
+        if self.validated.task_id not in ANSWERS:
+            raise ValueError(f"Task {self.validated.task_id} not found in loaded data")
+        self.answer_smiles = ANSWERS[self.validated.task_id]
+
+    @classmethod
+    def list_splits(cls) -> list[Split]:
+        return [
+            Split(name="train", type="train"),
+            Split(name="test", type="test"),
+        ]
+
+    @classmethod
+    def list_tasks(cls, split: str) -> list[JSONObject]:
+        if split not in ALL_TASKS:
+            return []
+        return [
+            {k: v for k, v in task.items() if k not in ("answer_smiles", "answer_index")}
+            for task in ALL_TASKS[split]
+        ]
+
+    async def get_prompt(self) -> List[TextBlock]:
+        return [TextBlock(text=self.validated.question)]
+
+    @tool
+    async def answer(self, params: AnswerInput) -> ToolOutput:
+        """Submit the SMILES string of the molecule that is NOT a binder."""
+        submitted = params.answer.strip()
+
+        # Validate SMILES
+        mol = Chem.MolFromSmiles(submitted)
+        if mol is None:
+            return ToolOutput(
+                blocks=[TextBlock(text=f"Invalid SMILES: {submitted}")],
+                metadata={"submitted": submitted, "valid_smiles": False, "correct": False},
+                reward=0.0,
+                finished=True,
+            )
+
+        # Canonicalize for comparison
+        canonical_submitted = Chem.MolToSmiles(mol, canonical=True)
+        canonical_answer = self.answer_smiles  # Already canonical from generation
+
+        is_correct = canonical_submitted == canonical_answer
+
+        if is_correct:
+            feedback = (
+                f"Correct! {canonical_submitted} is NOT a "
+                f"{self.validated.receptor_name} {self.validated.mode}."
+            )
+        else:
+            feedback = (
+                f"Incorrect. {canonical_submitted} is not the right answer."
+            )
+
+        return ToolOutput(
+            blocks=[TextBlock(text=feedback)],
+            metadata={
+                "submitted": canonical_submitted,
+                "expected": canonical_answer,
+                "valid_smiles": True,
+                "correct": is_correct,
+            },
+            reward=1.0 if is_correct else 0.0,
+            finished=True,
+        )
