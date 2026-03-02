@@ -1,116 +1,78 @@
 # ReceptorBind
 
-An OpenReward environment for evaluating an agent's ability to identify molecules that do **not** bind to a given human cell receptor in a specified mode (agonist/antagonist).
+[![OpenReward Environment](https://img.shields.io/badge/%E2%AD%90%20OpenReward-Environment-f7e6cc)](https://openreward.ai/GeneralReasoning/ReceptorBind)
 
-## Task
+## Description
 
-Each task presents 4 SMILES strings and asks:
+**ReceptorBind** is an environment for evaluating agents on receptor binding identification tasks. Each task presents four molecules (SMILES strings) and asks the agent to identify which molecule does NOT bind to a given human cell receptor in a specified mode (agonist or antagonist). The dataset is generated from EveBio Data Release 9, a large-scale receptor pharmacology dataset.
 
-> Among the following molecules, which one is likely NOT considered [receptor name] [mode]?
+## Capabilities
 
-Three of the four molecules are confirmed active binders (pXC50-based from EveBio screening data). The fourth is a confirmed inactive compound at that receptor+mode. The agent must identify the non-binder.
+- Identifying non-binding molecules from a set of structurally similar candidates
+- Reasoning about receptor pharmacology (agonist/antagonist modes)
+- Understanding structure-activity relationships for nuclear receptors and 7TM receptors
+- Working with molecular SMILES notation for pharmacological reasoning
 
-Distractors (the 3 active binders) are selected using **Tanimoto similarity** (ECFP4 Morgan fingerprints, radius 2) to be structurally similar to the inactive answer. This prevents the agent from simply spotting the structural outlier and forces genuine pharmacological reasoning. Inspired by the [ether0](https://github.com/Future-House/ether0) approach.
+## Compute Requirements
 
-- **1000 training tasks**, **100 test tasks**
-- **247 unique (receptor, mode) pairs** in train, **84** in test
-- Covers **Nuclear Receptors (NR)** and **7 Transmembrane Receptors (7TM)**
-- Modes: **Agonist** and **Antagonist**
-- Binary scoring: 1.0 for correct, 0.0 for incorrect
-- Verification via canonical SMILES comparison (RDKit)
+ReceptorBind does not require a sandbox. It has minimal compute requirements.
 
-## Data Source
+## License
 
-Tasks are generated from [EveBio Data Release 9](https://evebio.org), a large-scale receptor pharmacology dataset with screening results across ~1,400 compounds and ~200 targets. Compounds are classified as active or inactive based on the `Result` field in the summary results table. Train/test splits are done at the compound level to prevent data leakage.
+[ORLv1](https://openreward.ai/orlv1.md).
 
-### Distractor Selection
+## Tasks
 
-For each task, the generator:
-1. Picks an inactive compound (the answer) for a given receptor+mode
-2. Computes Tanimoto similarity (Morgan fingerprints, radius 2, 2048 bits) between the answer and all active compounds for that receptor+mode
-3. Ranks active compounds by similarity and takes the top 10 most similar
-4. Samples 3 from those 10 as distractors
+There are two splits: train (1,000 tasks) and test (100 tasks). Each task presents a multiple-choice question with 4 SMILES string options. Three options are confirmed active binders (based on pXC50 from EveBio screening data), and one is a confirmed inactive compound. The agent must identify the non-binder.
 
-This yields a **1.6x improvement** in mean answer-distractor Tanimoto similarity compared to random distractor selection (0.155 vs 0.096).
+Distractors (the 3 active binders) are selected by Tanimoto similarity (ECFP4 Morgan fingerprints, radius 2) to be structurally similar to the inactive answer, preventing the agent from simply spotting a structural outlier and forcing genuine pharmacological reasoning.
 
-## File Structure
+Tasks cover 247 unique (receptor, mode) pairs in training and 84 in test, spanning Nuclear Receptors (NR) and 7 Transmembrane Receptors (7TM) with both agonist and antagonist modes.
 
+## Reward Structure
+
+This is a sparse, verifiable reward environment. The agent calls the `answer` tool once with the SMILES string of its chosen non-binder.
+
+- **Correct**: Reward **1.0** if the submitted canonical SMILES matches the expected non-binder.
+- **Incorrect**: Reward **0.0** otherwise.
+
+We do not use LLM graders for this task.
+
+## Data
+
+Tasks are generated from EveBio Data Release 9, a large-scale receptor pharmacology dataset with screening results across ~1,400 compounds and ~200 targets. Train/test splits are performed at the compound level to prevent data leakage. Data files are stored on the OpenReward platform.
+
+## Tools
+
+Agents are given a single tool:
+
+- `answer`: Submit the SMILES string of the molecule that is NOT a binder for the given receptor and mode. The SMILES is validated with RDKit and compared against the expected answer via canonical SMILES matching. This tool can only be called once per task.
+
+## Time Horizon
+
+ReceptorBind is a single-turn environment. The agent receives a multiple-choice question and submits one answer. Each task requires exactly one tool call.
+
+[Statistics on average tool calls here]
+
+## Environment Difficulty
+
+[Statistics on environment difficulty here]
+
+## Other Environment Requirements
+
+There are no further environment requirements; ReceptorBind works out of the box with the OpenReward endpoint without any secrets.
+
+## Safety
+
+Agents in ReceptorBind are asked to identify non-binding molecules from pharmacological screening data. The environment does not present direct safety risks, as agents only provide SMILES strings evaluated computationally, with no access to external systems or real pharmacological processes.
+
+## Citations
+
+```bibtex
+@dataset{evebio2024,
+  author    = {EveBio},
+  title     = {EveBio Data Release 9},
+  year      = {2024},
+  url       = {https://evebio.org}
+}
 ```
-receptorbind/
-├── receptorbind.py      # Environment class (extends Environment)
-├── server.py            # Minimal server wrapper
-├── test_agent.py        # Agent integration test
-├── golden_tests.py      # Unit tests (8 tests)
-├── generate_tasks.py    # Data pipeline: EveBio zip -> task JSON
-├── data/
-│   ├── train.json       # 1000 training tasks
-│   └── test.json        # 100 test tasks
-├── requirements.txt
-├── Dockerfile
-└── README.md
-```
-
-## Quickstart
-
-### Install dependencies
-
-```bash
-pip install -r requirements.txt
-```
-
-### Regenerate tasks (optional)
-
-Requires `evebio_data_release9.zip` in the parent directory:
-
-```bash
-python generate_tasks.py
-```
-
-### Run tests
-
-```bash
-pytest golden_tests.py -v
-```
-
-### Start local server
-
-```bash
-python server.py
-```
-
-### Run agent test
-
-Requires `OPENAI_API_KEY` environment variable and a running server:
-
-```bash
-python test_agent.py
-```
-
-### Docker
-
-```bash
-docker build -t receptorbind:latest .
-docker run -p 8080:8080 receptorbind:latest
-```
-
-## Environment API
-
-| Method | Description |
-|---|---|
-| `list_splits()` | Returns `["train", "test"]` |
-| `list_tasks(split)` | Returns task specs (answer fields filtered out) |
-| `get_prompt()` | Returns the multiple-choice question as `List[TextBlock]` |
-| `answer(params)` | Submit a SMILES string; returns reward 1.0 if correct, 0.0 otherwise |
-
-## Task Spec Fields
-
-| Field | Description |
-|---|---|
-| `task_id` | Unique identifier (e.g., `train_0042`) |
-| `split` | `"train"` or `"test"` |
-| `receptor_name` | Full receptor name (e.g., "5-hydroxytryptamine receptor 1D") |
-| `receptor_gene` | Gene symbol (e.g., "HTR1D") |
-| `target_class` | `"NR"` or `"7TM"` |
-| `mode` | `"Agonist"` or `"Antagonist"` |
-| `options` | List of 4 SMILES strings |
-| `question` | Full question text with labeled options |
