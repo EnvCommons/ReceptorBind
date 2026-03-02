@@ -19,7 +19,7 @@ ReceptorBind does not require a sandbox. It has minimal compute requirements.
 
 ## License
 
-[ORLv1](https://openreward.ai/orlv1.md).
+[CC BY-NC 4.0](https://creativecommons.org/licenses/by-nc/4.0/deed.en).
 
 ## Tasks
 
@@ -51,8 +51,6 @@ Agents are given a single tool:
 ## Time Horizon
 
 ReceptorBind is a single-turn environment. The agent receives a multiple-choice question and submits one answer. Each task requires exactly one tool call.
-
-[Statistics on average tool calls here]
 
 ## Environment Difficulty
 
