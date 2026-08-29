@@ -23,6 +23,11 @@ else:
     ENV_PATH = Path(__file__).parent
 
 
+# Reward for a submission made after the task has already been graded. Negative
+# so repeat submissions are actively discouraged, not merely left unscored.
+REPEAT_SUBMISSION_PENALTY = -0.1
+
+
 class ReceptorBindTaskSpec(BaseModel):
     task_id: str
     split: str
@@ -66,6 +71,7 @@ class ReceptorBind(Environment):
         self.validated = ReceptorBindTaskSpec.model_validate(task_spec)
         if self.validated.task_id not in ANSWERS:
             raise ValueError(f"Task {self.validated.task_id} not found in loaded data")
+        self.submitted = 0
         self.answer_smiles = ANSWERS[self.validated.task_id]
 
     @classmethod
@@ -90,6 +96,16 @@ class ReceptorBind(Environment):
     @tool
     async def answer(self, params: AnswerInput) -> ToolOutput:
         """Submit the SMILES string of the molecule that is NOT a binder."""
+        if self.submitted > 0:
+            return ToolOutput(
+                blocks=[TextBlock(text="An answer has already been submitted for this task. "
+                                       "This episode is over: it is not re-graded, and repeat "
+                                       "submissions are penalised (reward -0.1).")],
+                metadata={"already_submitted": True, "submission_count": self.submitted},
+                reward=REPEAT_SUBMISSION_PENALTY,
+                finished=True,
+            )
+
         submitted = params.answer.strip()
 
         # Validate SMILES
@@ -117,6 +133,10 @@ class ReceptorBind(Environment):
             feedback = (
                 f"Incorrect. {canonical_submitted} is not the right answer."
             )
+
+        # An unparseable SMILES returns above without reaching the comparison, so
+        # it does not consume the attempt.
+        self.submitted += 1
 
         return ToolOutput(
             blocks=[TextBlock(text=feedback)],
