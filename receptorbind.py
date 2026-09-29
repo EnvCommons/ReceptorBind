@@ -108,14 +108,16 @@ class ReceptorBind(Environment):
 
         submitted = params.answer.strip()
 
-        # Validate SMILES
+        # Validate SMILES. An unparseable answer is not graded and does not end
+        # the episode, so the agent can resubmit one of the options.
         mol = Chem.MolFromSmiles(submitted)
         if mol is None:
             return ToolOutput(
-                blocks=[TextBlock(text=f"Invalid SMILES: {submitted}")],
+                blocks=[TextBlock(text=f"Invalid SMILES: {submitted}. This answer was not graded; "
+                                       "submit one of the option SMILES.")],
                 metadata={"submitted": submitted, "valid_smiles": False, "correct": False},
                 reward=0.0,
-                finished=True,
+                finished=False,
             )
 
         # Canonicalize for comparison
@@ -135,14 +137,13 @@ class ReceptorBind(Environment):
             )
 
         # An unparseable SMILES returns above without reaching the comparison, so
-        # it does not consume the attempt.
+        # it neither consumes the attempt nor ends the episode.
         self.submitted += 1
 
         return ToolOutput(
             blocks=[TextBlock(text=feedback)],
             metadata={
                 "submitted": canonical_submitted,
-                "expected": canonical_answer,
                 "valid_smiles": True,
                 "correct": is_correct,
             },

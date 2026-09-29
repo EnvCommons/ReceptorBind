@@ -34,7 +34,8 @@ Tasks cover 247 unique (receptor, mode) pairs in training and 84 in test, spanni
 This is a sparse, verifiable reward environment. The agent calls the `answer` tool once with the SMILES string of its chosen non-binder.
 
 - **Correct**: Reward **1.0** if the submitted canonical SMILES matches the expected non-binder.
-- **Incorrect**: Reward **0.0** otherwise.
+- **Incorrect**: Reward **0.0** if the submitted SMILES is valid but does not match.
+- **Invalid SMILES**: Reward **0.0**, not graded; the episode stays open so the agent can resubmit.
 
 We do not use LLM graders for this task.
 
@@ -46,11 +47,11 @@ Tasks are generated from EveBio Data Release 9, a large-scale receptor pharmacol
 
 Agents are given a single tool:
 
-- `answer`: Submit the SMILES string of the molecule that is NOT a binder for the given receptor and mode. The SMILES is validated with RDKit and compared against the expected answer via canonical SMILES matching. This tool can only be called once per task.
+- `answer`: Submit the SMILES string of the molecule that is NOT a binder for the given receptor and mode. The SMILES is validated with RDKit and compared against the expected answer via canonical SMILES matching. Only one answer is graded per task; an unparseable SMILES is not graded and can be resubmitted.
 
 ## Time Horizon
 
-ReceptorBind is a single-turn environment. The agent receives a multiple-choice question and submits one answer. Each task requires exactly one tool call.
+ReceptorBind is a single-turn environment. The agent receives a multiple-choice question and submits one answer. Each task requires one tool call, plus a resubmission if the first SMILES cannot be parsed.
 
 ## Environment Difficulty
 

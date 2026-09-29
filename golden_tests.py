@@ -67,15 +67,42 @@ async def test_wrong_answer():
 
 @pytest.mark.asyncio
 async def test_invalid_smiles():
-    """Submitting invalid SMILES should give reward 0.0."""
+    """Invalid SMILES gives reward 0.0, is not graded, and leaves the episode open."""
     tasks = _load_tasks("test")
     task = tasks[0]
     env = ReceptorBind(task_spec=task, secrets={})
 
     result = await env.answer(AnswerInput(answer="not_a_smiles_string!!!"))
     assert result.reward == 0.0
-    assert result.finished is True
+    assert result.finished is False
     assert result.metadata["valid_smiles"] is False
+
+
+@pytest.mark.asyncio
+async def test_invalid_then_correct_through_server():
+    """After an invalid SMILES, the next answer is still graded (through the SDK's tool dispatch)."""
+    tasks = _load_tasks("test")
+    task = tasks[0]
+    env = ReceptorBind(task_spec=task, secrets={})
+
+    first = (await env._call_tool("answer", {"answer": "not_a_smiles_string!!!"})).root.output
+    assert first.finished is False
+    second = (await env._call_tool("answer", {"answer": task["answer_smiles"]})).root.output
+    assert second.reward == 1.0
+    assert second.finished is True
+
+
+@pytest.mark.asyncio
+async def test_wrong_answer_does_not_reveal_answer():
+    """The tool result (text and metadata) must not contain the correct answer."""
+    tasks = _load_tasks("test")
+    task = tasks[0]
+    env = ReceptorBind(task_spec=task, secrets={})
+
+    wrong = [opt for opt in task["options"] if opt != task["answer_smiles"]][0]
+    result = await env.answer(AnswerInput(answer=wrong))
+    payload = json.dumps({"blocks": [b.model_dump() for b in result.blocks], "metadata": result.metadata})
+    assert task["answer_smiles"] not in payload
 
 
 @pytest.mark.asyncio
