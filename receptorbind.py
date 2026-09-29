@@ -108,10 +108,11 @@ class ReceptorBind(Environment):
 
         submitted = params.answer.strip()
 
-        # Validate SMILES. An unparseable answer is not graded and does not end
-        # the episode, so the agent can resubmit one of the options.
+        # Validate SMILES. An unparseable or empty answer (an empty string parses
+        # to a molecule with no atoms) is not graded and does not end the
+        # episode, so the agent can resubmit one of the options.
         mol = Chem.MolFromSmiles(submitted)
-        if mol is None:
+        if mol is None or mol.GetNumAtoms() == 0:
             return ToolOutput(
                 blocks=[TextBlock(text=f"Invalid SMILES: {submitted}. This answer was not graded; "
                                        "submit one of the option SMILES.")],

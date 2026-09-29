@@ -47,7 +47,7 @@ Tasks are generated from EveBio Data Release 9, a large-scale receptor pharmacol
 
 Agents are given a single tool:
 
-- `answer`: Submit the SMILES string of the molecule that is NOT a binder for the given receptor and mode. The SMILES is validated with RDKit and compared against the expected answer via canonical SMILES matching. Only one answer is graded per task; an unparseable SMILES is not graded and can be resubmitted.
+- `answer`: Submit the SMILES string of the molecule that is NOT a binder for the given receptor and mode. The SMILES is validated with RDKit and compared against the expected answer via canonical SMILES matching. Only one answer is graded per task; an empty or unparseable SMILES is not graded and can be resubmitted.
 
 ## Time Horizon
 

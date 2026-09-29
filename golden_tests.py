@@ -79,6 +79,20 @@ async def test_invalid_smiles():
 
 
 @pytest.mark.asyncio
+async def test_empty_answer():
+    """An empty answer parses to a molecule with no atoms: not graded, episode stays open."""
+    tasks = _load_tasks("test")
+    task = tasks[0]
+    env = ReceptorBind(task_spec=task, secrets={})
+
+    for answer in ("", "   "):
+        result = await env.answer(AnswerInput(answer=answer))
+        assert result.reward == 0.0
+        assert result.finished is False
+    assert env.submitted == 0
+
+
+@pytest.mark.asyncio
 async def test_invalid_then_correct_through_server():
     """After an invalid SMILES, the next answer is still graded (through the SDK's tool dispatch)."""
     tasks = _load_tasks("test")
